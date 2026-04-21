@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>局中银行助手</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero-card">
+        <p class="eyebrow">Party Money Keeper</p>
+        <h1>局中银行助手</h1>
+        <p class="hero-copy">
+          为聚会桌游做一个手机记账面板。玩家进房间就能转账、付银行、看余额和排行榜。
+        </p>
+      </header>
+
+      <main class="app-layout">
+        <section id="auth-screen" class="stack">
+          <div class="card-grid">
+            <section class="panel-card">
+              <div class="panel-head">
+                <h2>创建房间</h2>
+                <span class="panel-tag">房主默认担任银行</span>
+              </div>
+              <form id="create-form" class="stack">
+                <label class="field">
+                  <span>房间名</span>
+                  <input name="roomName" type="text" maxlength="32" placeholder="比如：周六大富翁局" required />
+                </label>
+                <label class="field">
+                  <span>你的名字</span>
+                  <input name="playerName" type="text" maxlength="20" placeholder="比如：阿杰" required />
+                </label>
+                <label class="field">
+                  <span>玩家初始资金</span>
+                  <input name="startingBalance" type="number" min="0" step="1" value="1500" required />
+                </label>
+                <label class="field">
+                  <span>银行初始资金</span>
+                  <input name="bankBalance" type="number" min="0" step="1" value="50000" required />
+                </label>
+                <button class="primary-btn" type="submit">创建并进入</button>
+              </form>
+            </section>
+
+            <section class="panel-card">
+              <div class="panel-head">
+                <h2>加入房间</h2>
+                <span class="panel-tag">输入房间码即可加入</span>
+              </div>
+              <form id="join-form" class="stack">
+                <label class="field">
+                  <span>房间码</span>
+                  <input name="roomCode" type="text" maxlength="6" placeholder="6位房间码" required />
+                </label>
+                <label class="field">
+                  <span>你的名字</span>
+                  <input name="playerName" type="text" maxlength="20" placeholder="比如：小周" required />
+                </label>
+                <button class="primary-btn alt" type="submit">加入房间</button>
+              </form>
+            </section>
+          </div>
+
+          <p id="auth-message" class="inline-message" aria-live="polite"></p>
+        </section>
+
+        <section id="dashboard-screen" class="stack hidden">
+          <section class="panel-card top-strip">
+            <div>
+              <p class="eyebrow">Room</p>
+              <h2 id="room-title">-</h2>
+              <p id="room-meta" class="muted-text">-</p>
+            </div>
+            <div class="top-actions">
+              <button id="copy-code-btn" class="secondary-btn" type="button">复制房间码</button>
+              <button id="leave-room-btn" class="ghost-btn" type="button">退出房间</button>
+            </div>
+          </section>
+
+          <section class="summary-row">
+            <article class="summary-card">
+              <span>我的余额</span>
+              <strong id="my-balance">0</strong>
+              <small id="my-rank">排名 -</small>
+            </article>
+            <article class="summary-card">
+              <span>银行余额</span>
+              <strong id="bank-balance">0</strong>
+              <small id="bank-admin-name">银行管理员 -</small>
+            </article>
+            <article class="summary-card">
+              <span>玩家数量</span>
+              <strong id="player-count">0</strong>
+              <small id="total-assets">玩家总资产 0</small>
+            </article>
+          </section>
+
+          <section class="content-grid">
+            <article class="panel-card">
+              <div class="panel-head">
+                <h2>财富排行</h2>
+                <span id="sync-status" class="panel-tag">同步中</span>
+              </div>
+              <div id="players-list" class="players-list"></div>
+            </article>
+
+            <article class="panel-card">
+              <div class="panel-head">
+                <h2>玩家转账</h2>
+                <span class="panel-tag">你自己的账户</span>
+              </div>
+              <form id="transfer-form" class="stack">
+                <label class="field">
+                  <span>转给谁</span>
+                  <select id="transfer-target" name="target" required></select>
+                </label>
+                <label class="field">
+                  <span>金额</span>
+                  <input name="amount" type="number" min="1" step="1" required />
+                </label>
+                <label class="field">
+                  <span>备注</span>
+                  <input name="note" type="text" maxlength="60" placeholder="买地、罚款、过路费..." />
+                </label>
+                <button class="primary-btn" type="submit">确认转账</button>
+              </form>
+              <p id="transfer-message" class="inline-message" aria-live="polite"></p>
+            </article>
+
+            <article id="bank-panel" class="panel-card hidden">
+              <div class="panel-head">
+                <h2>银行出款</h2>
+                <span class="panel-tag">仅银行管理员可用</span>
+              </div>
+              <form id="bank-transfer-form" class="stack">
+                <label class="field">
+                  <span>发给玩家</span>
+                  <select id="bank-target" name="target" required></select>
+                </label>
+                <label class="field">
+                  <span>金额</span>
+                  <input name="amount" type="number" min="1" step="1" required />
+                </label>
+                <label class="field">
+                  <span>备注</span>
+                  <input name="note" type="text" maxlength="60" placeholder="发工资、奖金、补贴..." />
+                </label>
+                <button class="primary-btn alt" type="submit">银行付款</button>
+              </form>
+              <p id="bank-message" class="inline-message" aria-live="polite"></p>
+            </article>
+
+            <article id="admin-panel" class="panel-card hidden">
+              <div class="panel-head">
+                <h2>房主管理</h2>
+                <span class="panel-tag">切换银行管理员</span>
+              </div>
+              <form id="bank-admin-form" class="stack">
+                <label class="field">
+                  <span>银行管理员</span>
+                  <select id="bank-admin-select" name="bankAdminPlayerId" required></select>
+                </label>
+                <button class="secondary-btn" type="submit">保存设置</button>
+              </form>
+              <p id="admin-message" class="inline-message" aria-live="polite"></p>
+            </article>
+
+            <article class="panel-card ledger-card">
+              <div class="panel-head">
+                <h2>最近流水</h2>
+                <span class="panel-tag">最新 30 条</span>
+              </div>
+              <div id="transactions-list" class="transactions-list"></div>
+            </article>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>

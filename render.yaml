@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: party-money-keeper
+    runtime: python
+    plan: starter
+    region: singapore
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.10
+      - key: DATABASE_URL
+        fromDatabase:
+          name: party-money-keeper-db
+          property: connectionString
+
+databases:
+  - name: party-money-keeper-db
+    plan: basic-256mb
+    region: singapore
+    databaseName: party_money_keeper
+    user: party_money_keeper
