@@ -265,6 +265,10 @@ function renderPlayers(players, meId) {
 }
 
 function renderTransferTargets(players, meId, bankAdminPlayerId) {
+  const currentTransferTarget = ui.transferTarget.value;
+  const currentBankTarget = ui.bankTarget.value;
+  const currentBankAdminTarget = ui.bankAdminSelect.value;
+
   const options = ['<option value="bank">银行</option>'];
   const bankOptions = [];
   const adminOptions = [];
@@ -284,6 +288,24 @@ function renderTransferTargets(players, meId, bankAdminPlayerId) {
   ui.transferTarget.innerHTML = options.join("");
   ui.bankTarget.innerHTML = bankOptions.join("");
   ui.bankAdminSelect.innerHTML = adminOptions.join("");
+
+  restoreSelectValue(ui.transferTarget, currentTransferTarget || "bank");
+  restoreSelectValue(ui.bankTarget, currentBankTarget);
+  restoreSelectValue(ui.bankAdminSelect, currentBankAdminTarget || String(bankAdminPlayerId));
+}
+
+function restoreSelectValue(selectElement, preferredValue) {
+  if (!preferredValue) {
+    return;
+  }
+
+  const hasMatchingOption = Array.from(selectElement.options).some(
+    (option) => option.value === preferredValue
+  );
+
+  if (hasMatchingOption) {
+    selectElement.value = preferredValue;
+  }
 }
 
 function renderTransactions(transactions) {
