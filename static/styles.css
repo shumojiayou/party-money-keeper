@@ -152,6 +152,11 @@ select {
   gap: 8px;
 }
 
+.room-card h2 {
+  font-size: clamp(2.1rem, 6vw, 3.5rem);
+  line-height: 0.95;
+}
+
 .panel-tag,
 .rank-chip,
 .role-chip {
@@ -301,9 +306,19 @@ select {
   gap: 6px;
 }
 
+.summary-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .summary-card strong {
   font-size: 1.8rem;
   line-height: 1;
+}
+
+.summary-rank-card strong {
+  font-size: 2rem;
 }
 
 .players-list,
@@ -311,6 +326,39 @@ select {
 .page-actions {
   display: grid;
   gap: 10px;
+}
+
+.saved-rooms-list {
+  display: grid;
+  gap: 10px;
+}
+
+.saved-room-card {
+  width: 100%;
+  padding: 16px 18px;
+  border: 1px solid rgba(204, 90, 42, 0.18);
+  border-radius: var(--radius-md);
+  background: var(--paper-strong);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+}
+
+.saved-room-card strong {
+  display: block;
+  font-size: 1.05rem;
+}
+
+.saved-room-meta {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.saved-room-card:hover {
+  transform: translateY(-1px);
 }
 
 .player-item,
@@ -381,6 +429,10 @@ select {
   grid-column: 1 / -1;
 }
 
+.page-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -424,5 +476,9 @@ select {
 
   .modal-actions button {
     width: 100%;
+  }
+
+  .page-actions {
+    grid-template-columns: 1fr;
   }
 }

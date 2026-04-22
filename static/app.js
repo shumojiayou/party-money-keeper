@@ -1,4 +1,5 @@
 const SESSION_KEY = "party-money-keeper-session";
+const SAVED_ROOMS_KEY = "party-money-keeper-saved-rooms";
 const POLL_INTERVAL_MS = 3000;
 const GAME_NAME = "大富翁";
 
@@ -19,7 +20,6 @@ const ui = {
   bankPanel: document.getElementById("bank-panel"),
   adminPanel: document.getElementById("admin-panel"),
   bankAdminSelect: document.getElementById("bank-admin-select"),
-  leaveRoomBtn: document.getElementById("leave-room-btn"),
   monopolyGameBtn: document.getElementById("monopoly-game-btn"),
   gameForms: document.getElementById("game-forms"),
   transferModal: document.getElementById("transfer-modal"),
@@ -29,6 +29,10 @@ const ui = {
   transferMessage: document.getElementById("transfer-message"),
   closeTransferBtn: document.getElementById("close-transfer-btn"),
   cancelTransferBtn: document.getElementById("cancel-transfer-btn"),
+  recentRoomsPanel: document.getElementById("recent-rooms-panel"),
+  recentRoomsList: document.getElementById("recent-rooms-list"),
+  pauseRoomBtn: document.getElementById("pause-room-btn"),
+  exitRoomBtn: document.getElementById("exit-room-btn"),
 };
 
 const forms = {
@@ -40,6 +44,7 @@ const forms = {
 };
 
 let session = loadSession();
+let savedRooms = loadSavedRooms();
 let currentState = null;
 let pollTimer = null;
 
@@ -48,17 +53,20 @@ forms.join.addEventListener("submit", handleJoinRoom);
 forms.transfer.addEventListener("submit", handlePlayerTransfer);
 forms.bankTransfer.addEventListener("submit", handleBankTransfer);
 forms.bankAdmin.addEventListener("submit", handleAssignBankAdmin);
-ui.leaveRoomBtn.addEventListener("click", handleLeaveRoom);
+ui.pauseRoomBtn.addEventListener("click", handlePauseRoom);
+ui.exitRoomBtn.addEventListener("click", handleExitRoom);
 ui.monopolyGameBtn.addEventListener("click", activateMonopolyGame);
 ui.playersList.addEventListener("click", handlePlayerCardClick);
 ui.closeTransferBtn.addEventListener("click", closeTransferModal);
 ui.cancelTransferBtn.addEventListener("click", closeTransferModal);
 ui.transferModal.addEventListener("click", handleBackdropClick);
+ui.recentRoomsList.addEventListener("click", handleSavedRoomClick);
 
 boot();
 
 async function boot() {
   activateMonopolyGame();
+  renderSavedRooms();
 
   if (!session) {
     showAuth();
@@ -67,8 +75,12 @@ async function boot() {
 
   try {
     await fetchState({ showSyncPulse: false });
-  } catch (_error) {
+  } catch (error) {
+    const expiredSession = session;
     clearSession();
+    if (shouldForgetSavedRoom(error)) {
+      forgetSavedRoom(expiredSession);
+    }
     showAuth("登录状态已失效，请重新进入房间。", "error");
   }
 }
@@ -87,16 +99,98 @@ function loadSession() {
   }
 }
 
+function loadSavedRooms() {
+  try {
+    const raw = localStorage.getItem(SAVED_ROOMS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
 function saveSession(nextSession) {
   session = nextSession;
   localStorage.setItem(SESSION_KEY, JSON.stringify(nextSession));
 }
 
-function clearSession() {
+function saveSavedRooms(nextRooms) {
+  savedRooms = nextRooms;
+  localStorage.setItem(SAVED_ROOMS_KEY, JSON.stringify(nextRooms));
+  renderSavedRooms();
+}
+
+function savedRoomId(room) {
+  return `${room.roomCode}:${room.playerId}`;
+}
+
+function rememberSavedRoom(room) {
+  if (!room?.roomCode || !room?.playerId || !room?.token) return;
+  const existingRoom = savedRooms.find((item) => savedRoomId(item) === savedRoomId(room));
+
+  const nextRoom = {
+    roomCode: String(room.roomCode),
+    playerId: Number(room.playerId),
+    token: String(room.token),
+    roomName: room.roomName || GAME_NAME,
+    playerName: room.playerName || "",
+    updatedAt: room.updatedAt || existingRoom?.updatedAt || Date.now(),
+  };
+
+  const filtered = savedRooms.filter((item) => savedRoomId(item) !== savedRoomId(nextRoom));
+  const nextRooms = [nextRoom, ...filtered].slice(0, 6);
+  if (JSON.stringify(nextRooms) !== JSON.stringify(savedRooms)) {
+    saveSavedRooms(nextRooms);
+  }
+}
+
+function forgetSavedRoom(room) {
+  if (!room?.roomCode || !room?.playerId) return;
+  saveSavedRooms(savedRooms.filter((item) => savedRoomId(item) !== savedRoomId(room)));
+}
+
+function renderSavedRooms() {
+  if (!savedRooms.length) {
+    ui.recentRoomsPanel.classList.add("hidden");
+    ui.recentRoomsList.innerHTML = "";
+    return;
+  }
+
+  ui.recentRoomsPanel.classList.remove("hidden");
+  ui.recentRoomsList.innerHTML = savedRooms
+    .map((room) => {
+      const roomId = savedRoomId(room);
+      return `
+        <button class="saved-room-card" type="button" data-saved-room-id="${escapeHtml(roomId)}">
+          <div>
+            <strong>${escapeHtml(room.roomName || GAME_NAME)}</strong>
+            <p class="saved-room-meta">房间码 ${escapeHtml(room.roomCode)} · 我是 ${escapeHtml(room.playerName || "玩家")}</p>
+          </div>
+          <span class="role-chip action">重新进入</span>
+        </button>
+      `;
+    })
+    .join("");
+}
+
+function shouldForgetSavedRoom(error) {
+  const message = String(error?.message || "");
+  return (
+    message.includes("重新加入房间") ||
+    message.includes("登录状态已失效") ||
+    message.includes("房间不存在")
+  );
+}
+
+function clearSession({ forget = false } = {}) {
+  const previousSession = session;
   session = null;
   currentState = null;
   localStorage.removeItem(SESSION_KEY);
   stopPolling();
+  if (forget && previousSession) {
+    forgetSavedRoom(previousSession);
+  }
 }
 
 function showAuth(message = "", tone = "") {
@@ -104,6 +198,7 @@ function showAuth(message = "", tone = "") {
   ui.authScreen.classList.remove("hidden");
   ui.dashboardScreen.classList.add("hidden");
   closeTransferModal();
+  renderSavedRooms();
   setMessage(ui.authMessage, message, tone);
 }
 
@@ -197,6 +292,33 @@ async function handleJoinRoom(event) {
   }
 }
 
+async function handleSavedRoomClick(event) {
+  const card = event.target.closest("[data-saved-room-id]");
+  if (!card) return;
+
+  const room = savedRooms.find((item) => savedRoomId(item) === card.dataset.savedRoomId);
+  if (!room) return;
+
+  saveSession({
+    roomCode: room.roomCode,
+    playerId: room.playerId,
+    token: room.token,
+  });
+  setMessage(ui.authMessage, "正在重新进入房间...", "");
+
+  try {
+    await fetchState({ showSyncPulse: false });
+    showDashboard();
+    startPolling();
+  } catch (error) {
+    clearSession();
+    if (shouldForgetSavedRoom(error)) {
+      forgetSavedRoom(room);
+    }
+    showAuth(error.message, "error");
+  }
+}
+
 async function fetchState({ showSyncPulse = true } = {}) {
   if (!session) return;
   const query = new URLSearchParams({
@@ -227,13 +349,29 @@ function stopPolling() {
   }
 }
 
+function resetRoomForms() {
+  forms.create.reset();
+  forms.join.reset();
+  forms.transfer.reset();
+  forms.bankTransfer.reset();
+  forms.bankAdmin.reset();
+}
+
 function renderState(state) {
   currentState = state;
   ui.roomTitle.textContent = state.room.name || GAME_NAME;
   ui.roomMeta.textContent = `房间码 ${state.room.code} · 我是 ${state.me.name}`;
   ui.myBalance.textContent = formatMoney(state.me.balance);
-  ui.myRank.textContent = `排名 #${state.me.rank}`;
+  ui.myRank.textContent = state.me.rank ? `#${state.me.rank}` : "-";
   ui.syncStatus.textContent = `最近同步 ${formatDateTime(state.serverTime)}`;
+  if (session) {
+    rememberSavedRoom({
+      ...session,
+      roomName: state.room.name || GAME_NAME,
+      playerName: state.me.name,
+      updatedAt: Date.now(),
+    });
+  }
 
   renderPlayers(state.players, state.me.id);
   renderSelectors(state.players, state.bankAdminPlayerId);
@@ -452,13 +590,41 @@ async function handleAssignBankAdmin(event) {
   }
 }
 
-function handleLeaveRoom() {
+function handlePauseRoom() {
+  if (session && currentState) {
+    rememberSavedRoom({
+      ...session,
+      roomName: currentState.room.name || GAME_NAME,
+      playerName: currentState.me.name,
+      updatedAt: Date.now(),
+    });
+  }
+
   clearSession();
-  forms.create.reset();
-  forms.join.reset();
-  forms.bankTransfer.reset();
-  forms.bankAdmin.reset();
-  showAuth("已退出当前房间。");
+  resetRoomForms();
+  showAuth("已暂离当前房间。");
+}
+
+async function handleExitRoom() {
+  if (!session) return;
+  if (!window.confirm("退出后会从房间中移除，需要重新加入。确定退出吗？")) {
+    return;
+  }
+
+  try {
+    await api(`/api/rooms/${session.roomCode}/leave`, {
+      method: "POST",
+      body: JSON.stringify({
+        playerId: session.playerId,
+        token: session.token,
+      }),
+    });
+    clearSession({ forget: true });
+    resetRoomForms();
+    showAuth("已退出房间。", "success");
+  } catch (error) {
+    ui.syncStatus.textContent = error.message;
+  }
 }
 
 function escapeHtml(raw) {

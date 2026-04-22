@@ -136,6 +136,7 @@ def sqlite_schema() -> str:
         token TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
+        left_at TEXT,
         FOREIGN KEY(room_id) REFERENCES rooms(id) ON DELETE CASCADE
     );
 
@@ -182,7 +183,8 @@ def postgres_schema() -> str:
         balance BIGINT NOT NULL,
         token TEXT NOT NULL,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        updated_at TEXT NOT NULL,
+        left_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS transactions (
@@ -305,6 +307,19 @@ class GameStore:
         schema = postgres_schema() if self.settings.backend == "postgres" else sqlite_schema()
         with self.connect() as conn:
             conn.execute_script(schema)
+            self._ensure_player_left_at_column(conn)
+
+    def _ensure_player_left_at_column(self, conn: DatabaseConnection) -> None:
+        if conn.backend == "postgres":
+            conn.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS left_at TEXT")
+            return
+
+        columns = {
+            str(row["name"])
+            for row in conn.execute("PRAGMA table_info(players)").fetchall()
+        }
+        if "left_at" not in columns:
+            conn.execute("ALTER TABLE players ADD COLUMN left_at TEXT")
 
     def _insert_and_get_id(
         self,
@@ -339,7 +354,7 @@ class GameStore:
             raise LookupError("房间不存在。")
 
         player = conn.execute(
-            "SELECT * FROM players WHERE id = ? AND room_id = ? AND token = ?",
+            "SELECT * FROM players WHERE id = ? AND room_id = ? AND token = ? AND left_at IS NULL",
             (player_id, room["id"], token),
         ).fetchone()
         if not player:
@@ -349,7 +364,7 @@ class GameStore:
 
     def _player_exists(self, conn: DatabaseConnection, room_id: int, player_id: int) -> dict[str, Any]:
         player = conn.execute(
-            "SELECT * FROM players WHERE id = ? AND room_id = ?",
+            "SELECT * FROM players WHERE id = ? AND room_id = ? AND left_at IS NULL",
             (player_id, room_id),
         ).fetchone()
         if not player:
@@ -367,6 +382,7 @@ class GameStore:
             SELECT id, name, balance, created_at
             FROM players
             WHERE room_id = ?
+              AND left_at IS NULL
             ORDER BY balance DESC, created_at ASC, id ASC
             """,
             (room["id"],),
@@ -592,6 +608,7 @@ class GameStore:
                     SELECT 1
                     FROM players
                     WHERE room_id = ?
+                      AND left_at IS NULL
                       AND lower(name) = lower(?)
                     """,
                     (room["id"], safe_player_name),
@@ -658,6 +675,68 @@ class GameStore:
             return self._room_snapshot(conn, room, me)
         finally:
             conn.close()
+
+    def leave_room(self, *, room_code: str, player_id: int, token: str) -> dict[str, object]:
+        with WRITE_LOCK:
+            conn = self.connect()
+            try:
+                conn.begin()
+                room, me = self._load_authenticated_room(
+                    conn,
+                    room_code=room_code,
+                    player_id=player_id,
+                    token=token,
+                )
+
+                updated_at = now_iso()
+                conn.execute(
+                    "UPDATE players SET left_at = ?, updated_at = ? WHERE id = ?",
+                    (updated_at, updated_at, me["id"]),
+                )
+
+                remaining_players = conn.execute(
+                    """
+                    SELECT id
+                    FROM players
+                    WHERE room_id = ?
+                      AND left_at IS NULL
+                    ORDER BY created_at ASC, id ASC
+                    """,
+                    (room["id"],),
+                ).fetchall()
+
+                if not remaining_players:
+                    conn.execute("DELETE FROM rooms WHERE id = ?", (room["id"],))
+                    conn.commit()
+                    return {"left": True, "roomClosed": True}
+
+                remaining_ids = {int(row["id"]) for row in remaining_players}
+                fallback_player_id = int(remaining_players[0]["id"])
+                next_host_player_id = int(room["host_player_id"] or 0)
+                next_bank_admin_player_id = int(room["bank_admin_player_id"] or 0)
+
+                if next_host_player_id not in remaining_ids:
+                    next_host_player_id = fallback_player_id
+                if next_bank_admin_player_id not in remaining_ids:
+                    next_bank_admin_player_id = next_host_player_id
+
+                conn.execute(
+                    """
+                    UPDATE rooms
+                    SET host_player_id = ?,
+                        bank_admin_player_id = ?,
+                        updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (next_host_player_id, next_bank_admin_player_id, updated_at, room["id"]),
+                )
+                conn.commit()
+                return {"left": True, "roomClosed": False}
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
 
     def assign_bank_admin(
         self,
@@ -936,6 +1015,19 @@ class AppHandler(BaseHTTPRequestHandler):
                     player_id=player_id,
                     token=token,
                     bank_admin_player_id=payload.get("bankAdminPlayerId"),
+                )
+                self._send_json(HTTPStatus.OK, response)
+                return
+
+            if len(parts) == 4 and parts[0] == "api" and parts[1] == "rooms" and parts[3] == "leave":
+                player_id = parse_amount(payload.get("playerId"), field_name="玩家 ID", minimum=1)
+                token = str(payload.get("token") or "")
+                if not token:
+                    raise ValueError("缺少登录令牌。")
+                response = self.store.leave_room(
+                    room_code=parts[2],
+                    player_id=player_id,
+                    token=token,
                 )
                 self._send_json(HTTPStatus.OK, response)
                 return

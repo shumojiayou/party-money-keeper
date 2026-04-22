@@ -27,6 +27,14 @@
             </button>
           </section>
 
+          <section id="recent-rooms-panel" class="panel-card stack hidden">
+            <div class="panel-head">
+              <h2>暂离房间</h2>
+              <span class="panel-tag">点一下继续</span>
+            </div>
+            <div id="recent-rooms-list" class="saved-rooms-list"></div>
+          </section>
+
           <div id="game-forms" class="card-grid">
             <section class="panel-card">
               <div class="panel-head">
@@ -94,10 +102,15 @@
             <p id="room-meta" class="muted-text">-</p>
           </section>
 
-          <section class="summary-card">
-            <span>我的余额</span>
-            <strong id="my-balance">0</strong>
-            <small id="my-rank">排名 -</small>
+          <section class="summary-grid">
+            <article class="summary-card">
+              <span>我的余额</span>
+              <strong id="my-balance">0</strong>
+            </article>
+            <article class="summary-card summary-rank-card">
+              <span>我的排名</span>
+              <strong id="my-rank">-</strong>
+            </article>
           </section>
 
           <section class="content-grid">
@@ -154,7 +167,8 @@
           </section>
 
           <div class="page-actions">
-            <button id="leave-room-btn" class="ghost-btn danger-btn" type="button">退出房间</button>
+            <button id="pause-room-btn" class="ghost-btn" type="button">暂离房间</button>
+            <button id="exit-room-btn" class="ghost-btn danger-btn" type="button">退出房间</button>
           </div>
         </section>
       </main>
