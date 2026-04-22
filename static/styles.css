@@ -164,9 +164,29 @@ select {
   gap: 8px;
 }
 
+.room-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.room-copy {
+  min-width: 0;
+}
+
 .room-card h2 {
   font-size: clamp(2.1rem, 6vw, 3.5rem);
   line-height: 0.95;
+}
+
+.room-meta {
+  margin: 0;
+}
+
+.room-back-btn {
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .panel-tag,
@@ -442,7 +462,7 @@ select {
 }
 
 .page-actions {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
 }
 
 .modal-backdrop {

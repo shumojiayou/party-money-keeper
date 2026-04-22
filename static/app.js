@@ -96,17 +96,17 @@ function activateMonopolyGame() {
 }
 
 function ensureAuthHistoryState() {
-  if (history.state?.screen === "auth") {
+  if (history.state?.screen === "auth" && window.location.hash !== "#room") {
     return;
   }
   history.replaceState({ screen: "auth" }, "", window.location.pathname);
 }
 
 function ensureRoomHistoryState() {
-  if (history.state?.screen === "room") {
+  if (history.state?.screen === "room" && window.location.hash === "#room") {
     return;
   }
-  history.pushState({ screen: "room" }, "", window.location.pathname);
+  history.pushState({ screen: "room" }, "", `${window.location.pathname}#room`);
 }
 
 function loadSession() {
@@ -417,6 +417,9 @@ function resetRoomForms() {
   forms.transfer.reset();
   forms.bankTransfer.reset();
   forms.bankAdmin.reset();
+  setMessage(ui.bankMessage, "");
+  setMessage(ui.adminMessage, "");
+  setMessage(ui.transferMessage, "");
 }
 
 function renderState(state) {
@@ -424,7 +427,7 @@ function renderState(state) {
   ui.roomTitle.textContent = state.room.name || GAME_NAME;
   ui.roomMeta.textContent = `房间码 ${state.room.code} · 我是 ${state.me.name}`;
   ui.myBalance.textContent = formatMoney(state.me.balance);
-  ui.myRank.textContent = state.me.rank ? `#${state.me.rank}` : "-";
+  ui.myRank.textContent = state.me.rank ? String(state.me.rank) : "-";
   ui.syncStatus.textContent = `最近同步 ${formatDateTime(state.serverTime)}`;
   if (session) {
     rememberSavedRoom({
@@ -465,7 +468,7 @@ function renderPlayers(players, meId) {
         <article class="${classes.join(" ")}" ${player.id === meId ? "" : `data-player-id="${player.id}"`}>
           <div class="player-row">
             <div class="player-left">
-              <span class="rank-chip">#${index + 1}</span>
+              <span class="rank-chip">${index + 1}</span>
               <strong>${escapeHtml(player.name)}</strong>
               ${actionBadge}
             </div>
@@ -671,7 +674,7 @@ function handlePauseRoom() {
 
 async function handleExitRoom() {
   if (!session) return;
-  if (!window.confirm("退出后会从房间中移除，需要重新加入。确定退出吗？")) {
+  if (!window.confirm("退出会消除这次进入房间的记录，是否退出？")) {
     return;
   }
 
