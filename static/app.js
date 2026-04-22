@@ -251,6 +251,20 @@ function setMessage(element, message, tone = "") {
   element.className = `inline-message${tone ? ` ${tone}` : ""}`;
 }
 
+function setButtonBusy(button, busy, busyText) {
+  if (!button) return;
+  if (!button.dataset.label) {
+    button.dataset.label = button.textContent || "";
+  }
+  button.disabled = busy;
+  button.textContent = busy ? busyText : button.dataset.label;
+}
+
+function resetActionButtons() {
+  setButtonBusy(ui.exitRoomBtn, false, "");
+  setButtonBusy(ui.dissolveRoomBtn, false, "");
+}
+
 function formatMoney(amount) {
   return Number(amount || 0).toLocaleString("zh-CN");
 }
@@ -417,6 +431,7 @@ function resetRoomForms() {
   forms.transfer.reset();
   forms.bankTransfer.reset();
   forms.bankAdmin.reset();
+  resetActionButtons();
   setMessage(ui.bankMessage, "");
   setMessage(ui.adminMessage, "");
   setMessage(ui.transferMessage, "");
@@ -678,6 +693,8 @@ async function handleExitRoom() {
     return;
   }
 
+  stopPolling();
+  setButtonBusy(ui.exitRoomBtn, true, "退出中...");
   try {
     await api(`/api/rooms/${session.roomCode}/leave`, {
       method: "POST",
@@ -691,6 +708,10 @@ async function handleExitRoom() {
     if (handleFatalRoomError(error)) {
       return;
     }
+    setButtonBusy(ui.exitRoomBtn, false, "退出中...");
+    if (session) {
+      startPolling();
+    }
     ui.syncStatus.textContent = error.message;
   }
 }
@@ -702,6 +723,8 @@ async function handleDissolveRoom() {
   }
 
   setMessage(ui.adminMessage, "解散中...", "");
+  stopPolling();
+  setButtonBusy(ui.dissolveRoomBtn, true, "解散中...");
 
   try {
     await api(`/api/rooms/${session.roomCode}/dissolve`, {
@@ -715,6 +738,10 @@ async function handleDissolveRoom() {
   } catch (error) {
     if (handleFatalRoomError(error)) {
       return;
+    }
+    setButtonBusy(ui.dissolveRoomBtn, false, "解散中...");
+    if (session) {
+      startPolling();
     }
     setMessage(ui.adminMessage, error.message, "error");
   }
