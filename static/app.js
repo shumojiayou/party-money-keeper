@@ -380,11 +380,6 @@ async function handlePlayerTransfer(event) {
     setMessage(ui.transferMessage, "请输入有效金额。", "error");
     return;
   }
-  if (amount > Number(currentState.me.balance)) {
-    setMessage(ui.transferMessage, "你的余额不足。", "error");
-    return;
-  }
-
   setMessage(ui.transferMessage, "提交中...", "");
 
   try {

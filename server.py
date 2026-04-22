@@ -748,16 +748,14 @@ class GameStore:
                 if safe_from_kind == "player":
                     if target_player["id"] == me["id"]:
                         raise ValueError("不能给自己转账。")
-                    result = conn.execute(
+                    conn.execute(
                         """
                         UPDATE players
                         SET balance = balance - ?, updated_at = ?
-                        WHERE id = ? AND balance >= ?
+                        WHERE id = ?
                         """,
-                        (safe_amount, updated_at, me["id"], safe_amount),
+                        (safe_amount, updated_at, me["id"]),
                     )
-                    if result.rowcount != 1:
-                        raise ValueError("你的余额不足。")
                     from_player_id = me["id"]
                 else:
                     if me["id"] != room["bank_admin_player_id"]:
