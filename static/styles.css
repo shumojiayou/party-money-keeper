@@ -1,8 +1,8 @@
 :root {
   --bg-top: #f3e8d2;
   --bg-bottom: #e7efe8;
-  --paper: rgba(255, 252, 245, 0.9);
-  --paper-strong: rgba(255, 252, 245, 0.97);
+  --paper: rgba(255, 252, 245, 0.92);
+  --paper-strong: rgba(255, 252, 245, 0.98);
   --ink: #20323f;
   --muted: #607585;
   --line: rgba(32, 50, 63, 0.1);
@@ -10,13 +10,12 @@
   --accent-deep: #aa4318;
   --accent-soft: rgba(204, 90, 42, 0.12);
   --success: #2c7a49;
-  --warning: #9c5b13;
   --shadow: 0 18px 40px rgba(32, 50, 63, 0.12);
   --radius-xl: 28px;
   --radius-lg: 22px;
   --radius-md: 16px;
   --radius-sm: 12px;
-  --max-width: 1120px;
+  --max-width: 1040px;
 }
 
 * {
@@ -50,6 +49,12 @@ select {
   padding: 24px 16px 40px;
 }
 
+.app-layout,
+.stack {
+  display: grid;
+  gap: 16px;
+}
+
 .hero-card,
 .panel-card,
 .summary-card,
@@ -60,9 +65,15 @@ select {
   box-shadow: var(--shadow);
 }
 
+.hero-card,
+.panel-card,
+.summary-card,
+.modal-card {
+  border-radius: var(--radius-lg);
+}
+
 .hero-card {
   padding: 28px;
-  border-radius: var(--radius-xl);
   overflow: hidden;
   position: relative;
 }
@@ -99,43 +110,20 @@ select {
   color: var(--accent-deep);
 }
 
-.app-layout {
-  margin-top: 18px;
-}
-
-.stack {
-  display: grid;
-  gap: 16px;
-}
-
-.card-grid,
-.content-grid,
-.summary-row {
-  display: grid;
-  gap: 16px;
-}
-
 .card-grid,
 .content-grid {
+  display: grid;
+  gap: 16px;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
-.summary-row {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-}
-
-.summary-row.two-up {
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
-
 .panel-card,
-.modal-card {
+.modal-card,
+.summary-card {
   padding: 20px;
-  border-radius: var(--radius-lg);
 }
 
 .panel-head,
-.top-strip,
 .player-row,
 .tx-top,
 .modal-actions {
@@ -145,10 +133,23 @@ select {
   gap: 12px;
 }
 
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .panel-head h2,
-.top-strip h2 {
+.room-card h2,
+.modal-head h2 {
   margin: 0;
   font-size: 1.18rem;
+}
+
+.room-card {
+  display: grid;
+  gap: 8px;
 }
 
 .panel-tag,
@@ -174,16 +175,6 @@ select {
 
 .rank-chip {
   background: rgba(32, 50, 63, 0.08);
-}
-
-.role-chip {
-  background: rgba(44, 122, 73, 0.12);
-  color: var(--success);
-}
-
-.role-chip.host {
-  background: rgba(156, 91, 19, 0.14);
-  color: var(--warning);
 }
 
 .role-chip.action {
@@ -260,13 +251,18 @@ select {
   border: 1px solid rgba(32, 50, 63, 0.12);
 }
 
+.danger-btn {
+  width: 100%;
+}
+
 .ghost-icon-btn {
   width: 38px;
   height: 38px;
   background: transparent;
   color: var(--muted);
-  font-size: 1.6rem;
+  font-size: 2rem;
   line-height: 1;
+  flex: 0 0 auto;
 }
 
 .primary-btn:hover,
@@ -301,8 +297,6 @@ select {
 }
 
 .summary-card {
-  padding: 18px;
-  border-radius: var(--radius-lg);
   display: grid;
   gap: 6px;
 }
@@ -312,14 +306,9 @@ select {
   line-height: 1;
 }
 
-.top-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
 .players-list,
-.transactions-list {
+.transactions-list,
+.page-actions {
   display: grid;
   gap: 10px;
 }
@@ -423,19 +412,14 @@ select {
     border-radius: 20px;
   }
 
-  .top-strip,
-  .panel-head,
-  .modal-actions {
+  .panel-head {
     align-items: flex-start;
     flex-direction: column;
   }
 
-  .top-actions {
-    width: 100%;
-  }
-
-  .top-actions button {
-    flex: 1 1 0;
+  .modal-actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .modal-actions button {

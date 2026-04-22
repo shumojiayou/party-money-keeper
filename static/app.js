@@ -12,8 +12,6 @@ const ui = {
   roomMeta: document.getElementById("room-meta"),
   myBalance: document.getElementById("my-balance"),
   myRank: document.getElementById("my-rank"),
-  bankAdminName: document.getElementById("bank-admin-name"),
-  playerCount: document.getElementById("player-count"),
   playersList: document.getElementById("players-list"),
   transactionsList: document.getElementById("transactions-list"),
   syncStatus: document.getElementById("sync-status"),
@@ -21,7 +19,6 @@ const ui = {
   bankPanel: document.getElementById("bank-panel"),
   adminPanel: document.getElementById("admin-panel"),
   bankAdminSelect: document.getElementById("bank-admin-select"),
-  copyCodeBtn: document.getElementById("copy-code-btn"),
   leaveRoomBtn: document.getElementById("leave-room-btn"),
   monopolyGameBtn: document.getElementById("monopoly-game-btn"),
   gameForms: document.getElementById("game-forms"),
@@ -51,7 +48,6 @@ forms.join.addEventListener("submit", handleJoinRoom);
 forms.transfer.addEventListener("submit", handlePlayerTransfer);
 forms.bankTransfer.addEventListener("submit", handleBankTransfer);
 forms.bankAdmin.addEventListener("submit", handleAssignBankAdmin);
-ui.copyCodeBtn.addEventListener("click", handleCopyRoomCode);
 ui.leaveRoomBtn.addEventListener("click", handleLeaveRoom);
 ui.monopolyGameBtn.addEventListener("click", activateMonopolyGame);
 ui.playersList.addEventListener("click", handlePlayerCardClick);
@@ -163,6 +159,7 @@ async function handleCreateRoom(event) {
     const result = await api("/api/rooms/create", {
       method: "POST",
       body: JSON.stringify({
+        roomCode: String(formData.get("roomCode") || "").trim(),
         roomName: GAME_NAME,
         playerName: formData.get("playerName"),
         startingBalance: formData.get("startingBalance"),
@@ -232,17 +229,10 @@ function stopPolling() {
 
 function renderState(state) {
   currentState = state;
-  const bankAdmin = state.players.find((player) => player.id === state.bankAdminPlayerId);
-  const roles = [];
-  if (state.me.isHost) roles.push("房主");
-  if (state.me.isBankAdmin) roles.push("银行管理员");
-
   ui.roomTitle.textContent = state.room.name || GAME_NAME;
-  ui.roomMeta.textContent = `房间码 ${state.room.code} · 我是 ${state.me.name}${roles.length ? ` · ${roles.join(" / ")}` : ""}`;
+  ui.roomMeta.textContent = `房间码 ${state.room.code} · 我是 ${state.me.name}`;
   ui.myBalance.textContent = formatMoney(state.me.balance);
   ui.myRank.textContent = `排名 #${state.me.rank}`;
-  ui.playerCount.textContent = String(state.stats.playerCount);
-  ui.bankAdminName.textContent = `银行管理员 ${bankAdmin ? bankAdmin.name : "-"}`;
   ui.syncStatus.textContent = `最近同步 ${formatDateTime(state.serverTime)}`;
 
   renderPlayers(state.players, state.me.id);
@@ -262,15 +252,8 @@ function renderPlayers(players, meId) {
 
   ui.playersList.innerHTML = players
     .map((player, index) => {
-      const badges = [];
-      if (player.isHost) badges.push('<span class="role-chip host">房主</span>');
-      if (player.isBankAdmin) badges.push('<span class="role-chip">银行</span>');
-      if (player.id === meId) {
-        badges.push('<span class="role-chip">我</span>');
-      } else {
-        badges.push('<span class="role-chip action">点此转账</span>');
-      }
-
+      const actionBadge =
+        player.id === meId ? "" : '<span class="role-chip action">点此转账</span>';
       const classes = ["player-item"];
       if (player.id === meId) {
         classes.push("is-self");
@@ -284,7 +267,7 @@ function renderPlayers(players, meId) {
             <div class="player-left">
               <span class="rank-chip">#${index + 1}</span>
               <strong>${escapeHtml(player.name)}</strong>
-              ${badges.join("")}
+              ${actionBadge}
             </div>
             <span class="player-balance">${formatMoney(player.balance)}</span>
           </div>
@@ -307,8 +290,7 @@ function renderSelectors(players, bankAdminPlayerId) {
 
   ui.bankTarget.innerHTML = bankOptions.join("");
   ui.bankAdminSelect.innerHTML = adminOptions.join("");
-
-  restoreSelectValue(ui.bankTarget, previousBankTarget);
+  restoreSelectValue(ui.bankTarget, previousBankTarget || String(bankAdminPlayerId));
   restoreSelectValue(ui.bankAdminSelect, previousAdminTarget || String(bankAdminPlayerId));
 }
 
@@ -346,16 +328,11 @@ function renderTransactions(transactions) {
 
 function handlePlayerCardClick(event) {
   const card = event.target.closest("[data-player-id]");
-  if (!card || !currentState) {
-    return;
-  }
+  if (!card || !currentState) return;
 
   const targetId = Number(card.dataset.playerId);
   const player = currentState.players.find((item) => item.id === targetId);
-  if (!player) {
-    return;
-  }
-
+  if (!player) return;
   openTransferModal(player);
 }
 
@@ -381,9 +358,7 @@ function handleBackdropClick(event) {
 }
 
 function syncTransferModal(players) {
-  if (ui.transferModal.classList.contains("hidden")) {
-    return;
-  }
+  if (ui.transferModal.classList.contains("hidden")) return;
 
   const targetId = Number(ui.transferPlayerId.value);
   const player = players.find((item) => item.id === targetId);
@@ -397,8 +372,19 @@ function syncTransferModal(players) {
 
 async function handlePlayerTransfer(event) {
   event.preventDefault();
-  if (!session) return;
+  if (!session || !currentState) return;
+
   const formData = new FormData(forms.transfer);
+  const amount = Number(formData.get("amount"));
+  if (!Number.isFinite(amount) || amount <= 0) {
+    setMessage(ui.transferMessage, "请输入有效金额。", "error");
+    return;
+  }
+  if (amount > Number(currentState.me.balance)) {
+    setMessage(ui.transferMessage, "你的余额不足。", "error");
+    return;
+  }
+
   setMessage(ui.transferMessage, "提交中...", "");
 
   try {
@@ -410,7 +396,7 @@ async function handlePlayerTransfer(event) {
         fromKind: "player",
         toKind: "player",
         toPlayerId: formData.get("targetPlayerId"),
-        amount: formData.get("amount"),
+        amount,
         note: "",
       }),
     });
@@ -468,16 +454,6 @@ async function handleAssignBankAdmin(event) {
     setMessage(ui.adminMessage, "银行管理员已更新。", "success");
   } catch (error) {
     setMessage(ui.adminMessage, error.message, "error");
-  }
-}
-
-async function handleCopyRoomCode() {
-  if (!currentState) return;
-  try {
-    await navigator.clipboard.writeText(currentState.room.code);
-    ui.syncStatus.textContent = "房间码已复制";
-  } catch (_error) {
-    ui.syncStatus.textContent = `房间码 ${currentState.room.code}`;
   }
 }
 

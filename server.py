@@ -4,7 +4,6 @@ import argparse
 import json
 import mimetypes
 import os
-import secrets
 import sqlite3
 import threading
 from dataclasses import dataclass
@@ -26,7 +25,6 @@ except ImportError:  # pragma: no cover
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
-ROOM_CODE_DIGITS = "0123456789"
 ROOM_CODE_LENGTH = 3
 DEFAULT_GAME_NAME = "大富翁"
 MAX_NAME_LENGTH = 20
@@ -87,6 +85,15 @@ def normalize_note(raw: object) -> str:
     value = str(raw or "").strip()
     if len(value) > MAX_NOTE_LENGTH:
         raise ValueError(f"备注不能超过{MAX_NOTE_LENGTH}个字符。")
+    return value
+
+
+def normalize_room_code(raw: object, *, required: bool) -> str:
+    value = str(raw or "").strip()
+    if not value and not required:
+        return value
+    if len(value) != ROOM_CODE_LENGTH or not value.isdigit():
+        raise ValueError("房间码应为 3 位数字。")
     return value
 
 
@@ -213,6 +220,7 @@ class QueryResult:
     def __init__(self, cursor: Any) -> None:
         self.cursor = cursor
         self.lastrowid = getattr(cursor, "lastrowid", None)
+        self.rowcount = getattr(cursor, "rowcount", -1)
 
     def fetchone(self) -> dict[str, Any] | None:
         return normalize_row(self.cursor.fetchone())
@@ -316,17 +324,6 @@ class GameStore:
             raise RuntimeError("SQLite 未返回主键。")
         return int(cursor.lastrowid)
 
-    def _generate_room_code(self, conn: DatabaseConnection) -> str:
-        for _ in range(2000):
-            code = "".join(secrets.choice(ROOM_CODE_DIGITS) for _ in range(ROOM_CODE_LENGTH))
-            exists = conn.execute(
-                "SELECT 1 FROM rooms WHERE room_code = ?",
-                (code,),
-            ).fetchone()
-            if not exists:
-                return code
-        raise RuntimeError("房间数量已满，请稍后再试。")
-
     def _load_authenticated_room(
         self,
         conn: DatabaseConnection,
@@ -380,8 +377,6 @@ class GameStore:
         my_rank = 0
 
         for index, row in enumerate(player_rows, start=1):
-            is_host = row["id"] == room["host_player_id"]
-            is_bank_admin = row["id"] == room["bank_admin_player_id"]
             total_assets += int(row["balance"])
             if row["id"] == me["id"]:
                 my_rank = index
@@ -390,8 +385,8 @@ class GameStore:
                     "id": row["id"],
                     "name": row["name"],
                     "balance": row["balance"],
-                    "isHost": is_host,
-                    "isBankAdmin": is_bank_admin,
+                    "isHost": row["id"] == room["host_player_id"],
+                    "isBankAdmin": row["id"] == room["bank_admin_player_id"],
                 }
             )
 
@@ -419,7 +414,6 @@ class GameStore:
 
         transactions: list[dict[str, object]] = []
         for row in tx_rows:
-            from_label = "银行" if row["from_kind"] == "bank" else row["from_player_name"]
             transactions.append(
                 {
                     "id": row["id"],
@@ -427,7 +421,7 @@ class GameStore:
                     "note": row["note"],
                     "createdAt": row["created_at"],
                     "actorName": row["actor_name"],
-                    "fromLabel": from_label,
+                    "fromLabel": "银行" if row["from_kind"] == "bank" else row["from_player_name"],
                     "toLabel": row["to_player_name"],
                 }
             )
@@ -462,12 +456,14 @@ class GameStore:
     def create_room(
         self,
         *,
+        room_code: object,
         room_name: object,
         player_name: object,
         starting_balance: object,
         bank_balance: object,
     ) -> dict[str, object]:
         del bank_balance
+        safe_room_code = normalize_room_code(room_code, required=True)
         safe_room_name = normalize_optional_name(
             room_name,
             max_length=MAX_ROOM_NAME_LENGTH,
@@ -489,7 +485,13 @@ class GameStore:
             try:
                 conn.begin()
                 created_at = now_iso()
-                room_code = self._generate_room_code(conn)
+                existing_room = conn.execute(
+                    "SELECT 1 FROM rooms WHERE room_code = ?",
+                    (safe_room_code,),
+                ).fetchone()
+                if existing_room:
+                    raise ValueError("这个房间码已经被占用了，请换一个。")
+
                 room_id = self._insert_and_get_id(
                     conn,
                     """
@@ -504,7 +506,7 @@ class GameStore:
                     VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        room_code,
+                        safe_room_code,
                         safe_room_name,
                         safe_starting_balance,
                         0,
@@ -513,7 +515,7 @@ class GameStore:
                     ),
                 )
 
-                token = secrets.token_urlsafe(24)
+                token = os.urandom(18).hex()
                 player_id = self._insert_and_get_id(
                     conn,
                     """
@@ -554,7 +556,7 @@ class GameStore:
                 conn.commit()
                 return {
                     "session": {
-                        "roomCode": room_code,
+                        "roomCode": safe_room_code,
                         "playerId": player_id,
                         "token": token,
                     },
@@ -567,10 +569,7 @@ class GameStore:
                 conn.close()
 
     def join_room(self, *, room_code: object, player_name: object) -> dict[str, object]:
-        safe_room_code = str(room_code or "").strip()
-        if len(safe_room_code) != ROOM_CODE_LENGTH or not safe_room_code.isdigit():
-            raise ValueError("房间码应为 3 位数字。")
-
+        safe_room_code = normalize_room_code(room_code, required=True)
         safe_player_name = normalize_name(
             player_name,
             field_name="玩家名",
@@ -601,7 +600,7 @@ class GameStore:
                     raise ValueError("房间里已经有同名玩家，请换个名字。")
 
                 created_at = now_iso()
-                token = secrets.token_urlsafe(24)
+                token = os.urandom(18).hex()
                 player_id = self._insert_and_get_id(
                     conn,
                     """
@@ -743,22 +742,26 @@ class GameStore:
                 )
 
                 target_player = self._player_exists(conn, room["id"], target_player_id)
-                if target_player["id"] == me["id"]:
-                    raise ValueError("不能给自己转账。")
-
                 updated_at = now_iso()
                 from_player_id: int | None = None
 
                 if safe_from_kind == "player":
-                    if me["balance"] < safe_amount:
+                    if target_player["id"] == me["id"]:
+                        raise ValueError("不能给自己转账。")
+                    result = conn.execute(
+                        """
+                        UPDATE players
+                        SET balance = balance - ?, updated_at = ?
+                        WHERE id = ? AND balance >= ?
+                        """,
+                        (safe_amount, updated_at, me["id"], safe_amount),
+                    )
+                    if result.rowcount != 1:
                         raise ValueError("你的余额不足。")
                     from_player_id = me["id"]
-                    conn.execute(
-                        "UPDATE players SET balance = balance - ?, updated_at = ? WHERE id = ?",
-                        (safe_amount, updated_at, me["id"]),
-                    )
-                elif me["id"] != room["bank_admin_player_id"]:
-                    raise PermissionError("只有银行管理员可以从银行出款。")
+                else:
+                    if me["id"] != room["bank_admin_player_id"]:
+                        raise PermissionError("只有银行管理员可以从银行出款。")
 
                 conn.execute(
                     "UPDATE players SET balance = balance + ?, updated_at = ? WHERE id = ?",
@@ -890,6 +893,7 @@ class AppHandler(BaseHTTPRequestHandler):
         try:
             if parts == ["api", "rooms", "create"]:
                 response = self.store.create_room(
+                    room_code=payload.get("roomCode"),
                     room_name=payload.get("roomName"),
                     player_name=payload.get("playerName"),
                     starting_balance=payload.get("startingBalance"),

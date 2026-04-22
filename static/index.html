@@ -8,18 +8,18 @@
   </head>
   <body>
     <div class="page-shell">
-      <header class="hero-card">
-        <p class="eyebrow">Party Game Helper</p>
-        <h1>聚餐游戏助手</h1>
-        <p class="hero-copy">先选游戏，再创建房间或加入房间。当前支持大富翁记账和银行发钱。</p>
-      </header>
-
       <main class="app-layout">
         <section id="auth-screen" class="stack">
+          <header class="hero-card">
+            <p class="eyebrow">Party Game Helper</p>
+            <h1>聚餐游戏助手</h1>
+            <p class="hero-copy">先选游戏，再创建房间或加入房间。当前支持大富翁记账和银行发钱。</p>
+          </header>
+
           <section class="panel-card stack">
             <div class="panel-head">
               <h2>选择游戏</h2>
-              <span class="panel-tag">先选一个再开始</span>
+              <span class="panel-tag">当前可用</span>
             </div>
             <button id="monopoly-game-btn" class="game-choice is-active" type="button">
               <strong>大富翁</strong>
@@ -35,6 +35,18 @@
               </div>
               <form id="create-form" class="stack">
                 <label class="field">
+                  <span>房间码</span>
+                  <input
+                    name="roomCode"
+                    type="text"
+                    maxlength="3"
+                    inputmode="numeric"
+                    pattern="[0-9]{3}"
+                    placeholder="设置 3 个数字作为房间码"
+                    required
+                  />
+                </label>
+                <label class="field">
                   <span>你的名字</span>
                   <input name="playerName" type="text" maxlength="20" placeholder="例如：mjh" required />
                 </label>
@@ -49,7 +61,7 @@
             <section class="panel-card">
               <div class="panel-head">
                 <h2>加入房间</h2>
-                <span class="panel-tag">房间码为 3 位数字</span>
+                <span class="panel-tag">输入别人的房间码</span>
               </div>
               <form id="join-form" class="stack">
                 <label class="field">
@@ -77,29 +89,15 @@
         </section>
 
         <section id="dashboard-screen" class="stack hidden">
-          <section class="panel-card top-strip">
-            <div>
-              <p class="eyebrow">Monopoly</p>
-              <h2 id="room-title">大富翁</h2>
-              <p id="room-meta" class="muted-text">-</p>
-            </div>
-            <div class="top-actions">
-              <button id="copy-code-btn" class="secondary-btn" type="button">复制房间码</button>
-              <button id="leave-room-btn" class="ghost-btn" type="button">退出房间</button>
-            </div>
+          <section class="panel-card room-card">
+            <h2 id="room-title">大富翁</h2>
+            <p id="room-meta" class="muted-text">-</p>
           </section>
 
-          <section class="summary-row two-up">
-            <article class="summary-card">
-              <span>我的余额</span>
-              <strong id="my-balance">0</strong>
-              <small id="my-rank">排名 -</small>
-            </article>
-            <article class="summary-card">
-              <span>玩家数量</span>
-              <strong id="player-count">0</strong>
-              <small id="bank-admin-name">银行管理员 -</small>
-            </article>
+          <section class="summary-card">
+            <span>我的余额</span>
+            <strong id="my-balance">0</strong>
+            <small id="my-rank">排名 -</small>
           </section>
 
           <section class="content-grid">
@@ -154,15 +152,19 @@
               <div id="transactions-list" class="transactions-list"></div>
             </article>
           </section>
+
+          <div class="page-actions">
+            <button id="leave-room-btn" class="ghost-btn danger-btn" type="button">退出房间</button>
+          </div>
         </section>
       </main>
     </div>
 
     <div id="transfer-modal" class="modal-backdrop hidden">
       <section class="modal-card">
-        <div class="panel-head">
+        <div class="modal-head">
           <h2>给 <span id="transfer-target-name">-</span> 转账</h2>
-          <button id="close-transfer-btn" class="ghost-icon-btn" type="button">×</button>
+          <button id="close-transfer-btn" class="ghost-icon-btn" type="button" aria-label="关闭">×</button>
         </div>
         <form id="transfer-form" class="stack">
           <input id="transfer-player-id" name="targetPlayerId" type="hidden" />
