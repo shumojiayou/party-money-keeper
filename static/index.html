@@ -3,43 +3,44 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>局中银行助手</title>
+    <title>聚餐游戏助手</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <div class="page-shell">
       <header class="hero-card">
-        <p class="eyebrow">Party Money Keeper</p>
-        <h1>局中银行助手</h1>
-        <p class="hero-copy">
-          为聚会桌游做一个手机记账面板。玩家进房间就能转账、付银行、看余额和排行榜。
-        </p>
+        <p class="eyebrow">Party Game Helper</p>
+        <h1>聚餐游戏助手</h1>
+        <p class="hero-copy">先选游戏，再创建房间或加入房间。当前支持大富翁记账和银行发钱。</p>
       </header>
 
       <main class="app-layout">
         <section id="auth-screen" class="stack">
-          <div class="card-grid">
+          <section class="panel-card stack">
+            <div class="panel-head">
+              <h2>选择游戏</h2>
+              <span class="panel-tag">先选一个再开始</span>
+            </div>
+            <button id="monopoly-game-btn" class="game-choice is-active" type="button">
+              <strong>大富翁</strong>
+              <span>聚会时记账、转账、银行发钱</span>
+            </button>
+          </section>
+
+          <div id="game-forms" class="card-grid">
             <section class="panel-card">
               <div class="panel-head">
                 <h2>创建房间</h2>
-                <span class="panel-tag">房主默认担任银行</span>
+                <span class="panel-tag">房主默认管理银行</span>
               </div>
               <form id="create-form" class="stack">
                 <label class="field">
-                  <span>房间名</span>
-                  <input name="roomName" type="text" maxlength="32" placeholder="比如：周六大富翁局" required />
-                </label>
-                <label class="field">
                   <span>你的名字</span>
-                  <input name="playerName" type="text" maxlength="20" placeholder="比如：阿杰" required />
+                  <input name="playerName" type="text" maxlength="20" placeholder="例如：mjh" required />
                 </label>
                 <label class="field">
                   <span>玩家初始资金</span>
                   <input name="startingBalance" type="number" min="0" step="1" value="1500" required />
-                </label>
-                <label class="field">
-                  <span>银行初始资金</span>
-                  <input name="bankBalance" type="number" min="0" step="1" value="50000" required />
                 </label>
                 <button class="primary-btn" type="submit">创建并进入</button>
               </form>
@@ -48,16 +49,24 @@
             <section class="panel-card">
               <div class="panel-head">
                 <h2>加入房间</h2>
-                <span class="panel-tag">输入房间码即可加入</span>
+                <span class="panel-tag">房间码为 3 位数字</span>
               </div>
               <form id="join-form" class="stack">
                 <label class="field">
                   <span>房间码</span>
-                  <input name="roomCode" type="text" maxlength="6" placeholder="6位房间码" required />
+                  <input
+                    name="roomCode"
+                    type="text"
+                    maxlength="3"
+                    inputmode="numeric"
+                    pattern="[0-9]{3}"
+                    placeholder="例如：123"
+                    required
+                  />
                 </label>
                 <label class="field">
                   <span>你的名字</span>
-                  <input name="playerName" type="text" maxlength="20" placeholder="比如：小周" required />
+                  <input name="playerName" type="text" maxlength="20" placeholder="例如：mjh2" required />
                 </label>
                 <button class="primary-btn alt" type="submit">加入房间</button>
               </form>
@@ -70,8 +79,8 @@
         <section id="dashboard-screen" class="stack hidden">
           <section class="panel-card top-strip">
             <div>
-              <p class="eyebrow">Room</p>
-              <h2 id="room-title">-</h2>
+              <p class="eyebrow">Monopoly</p>
+              <h2 id="room-title">大富翁</h2>
               <p id="room-meta" class="muted-text">-</p>
             </div>
             <div class="top-actions">
@@ -80,21 +89,16 @@
             </div>
           </section>
 
-          <section class="summary-row">
+          <section class="summary-row two-up">
             <article class="summary-card">
               <span>我的余额</span>
               <strong id="my-balance">0</strong>
               <small id="my-rank">排名 -</small>
             </article>
             <article class="summary-card">
-              <span>银行余额</span>
-              <strong id="bank-balance">0</strong>
-              <small id="bank-admin-name">银行管理员 -</small>
-            </article>
-            <article class="summary-card">
               <span>玩家数量</span>
               <strong id="player-count">0</strong>
-              <small id="total-assets">玩家总资产 0</small>
+              <small id="bank-admin-name">银行管理员 -</small>
             </article>
           </section>
 
@@ -104,30 +108,8 @@
                 <h2>财富排行</h2>
                 <span id="sync-status" class="panel-tag">同步中</span>
               </div>
+              <p class="muted-text section-tip">点击其他玩家，直接给他转账。</p>
               <div id="players-list" class="players-list"></div>
-            </article>
-
-            <article class="panel-card">
-              <div class="panel-head">
-                <h2>玩家转账</h2>
-                <span class="panel-tag">你自己的账户</span>
-              </div>
-              <form id="transfer-form" class="stack">
-                <label class="field">
-                  <span>转给谁</span>
-                  <select id="transfer-target" name="target" required></select>
-                </label>
-                <label class="field">
-                  <span>金额</span>
-                  <input name="amount" type="number" min="1" step="1" required />
-                </label>
-                <label class="field">
-                  <span>备注</span>
-                  <input name="note" type="text" maxlength="60" placeholder="买地、罚款、过路费..." />
-                </label>
-                <button class="primary-btn" type="submit">确认转账</button>
-              </form>
-              <p id="transfer-message" class="inline-message" aria-live="polite"></p>
             </article>
 
             <article id="bank-panel" class="panel-card hidden">
@@ -137,18 +119,14 @@
               </div>
               <form id="bank-transfer-form" class="stack">
                 <label class="field">
-                  <span>发给玩家</span>
+                  <span>发给谁</span>
                   <select id="bank-target" name="target" required></select>
                 </label>
                 <label class="field">
                   <span>金额</span>
                   <input name="amount" type="number" min="1" step="1" required />
                 </label>
-                <label class="field">
-                  <span>备注</span>
-                  <input name="note" type="text" maxlength="60" placeholder="发工资、奖金、补贴..." />
-                </label>
-                <button class="primary-btn alt" type="submit">银行付款</button>
+                <button class="primary-btn alt" type="submit">确认发钱</button>
               </form>
               <p id="bank-message" class="inline-message" aria-live="polite"></p>
             </article>
@@ -178,6 +156,27 @@
           </section>
         </section>
       </main>
+    </div>
+
+    <div id="transfer-modal" class="modal-backdrop hidden">
+      <section class="modal-card">
+        <div class="panel-head">
+          <h2>给 <span id="transfer-target-name">-</span> 转账</h2>
+          <button id="close-transfer-btn" class="ghost-icon-btn" type="button">×</button>
+        </div>
+        <form id="transfer-form" class="stack">
+          <input id="transfer-player-id" name="targetPlayerId" type="hidden" />
+          <label class="field">
+            <span>金额</span>
+            <input id="transfer-amount" name="amount" type="number" min="1" step="1" required />
+          </label>
+          <div class="modal-actions">
+            <button id="cancel-transfer-btn" class="ghost-btn" type="button">取消</button>
+            <button class="primary-btn" type="submit">确认转账</button>
+          </div>
+        </form>
+        <p id="transfer-message" class="inline-message" aria-live="polite"></p>
+      </section>
     </div>
 
     <script src="/app.js" defer></script>

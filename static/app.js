@@ -1,31 +1,37 @@
 const SESSION_KEY = "party-money-keeper-session";
 const POLL_INTERVAL_MS = 3000;
+const GAME_NAME = "大富翁";
 
 const ui = {
   authScreen: document.getElementById("auth-screen"),
   dashboardScreen: document.getElementById("dashboard-screen"),
   authMessage: document.getElementById("auth-message"),
-  transferMessage: document.getElementById("transfer-message"),
   bankMessage: document.getElementById("bank-message"),
   adminMessage: document.getElementById("admin-message"),
   roomTitle: document.getElementById("room-title"),
   roomMeta: document.getElementById("room-meta"),
   myBalance: document.getElementById("my-balance"),
   myRank: document.getElementById("my-rank"),
-  bankBalance: document.getElementById("bank-balance"),
   bankAdminName: document.getElementById("bank-admin-name"),
   playerCount: document.getElementById("player-count"),
-  totalAssets: document.getElementById("total-assets"),
   playersList: document.getElementById("players-list"),
   transactionsList: document.getElementById("transactions-list"),
   syncStatus: document.getElementById("sync-status"),
-  transferTarget: document.getElementById("transfer-target"),
   bankTarget: document.getElementById("bank-target"),
   bankPanel: document.getElementById("bank-panel"),
   adminPanel: document.getElementById("admin-panel"),
   bankAdminSelect: document.getElementById("bank-admin-select"),
   copyCodeBtn: document.getElementById("copy-code-btn"),
   leaveRoomBtn: document.getElementById("leave-room-btn"),
+  monopolyGameBtn: document.getElementById("monopoly-game-btn"),
+  gameForms: document.getElementById("game-forms"),
+  transferModal: document.getElementById("transfer-modal"),
+  transferTargetName: document.getElementById("transfer-target-name"),
+  transferPlayerId: document.getElementById("transfer-player-id"),
+  transferAmount: document.getElementById("transfer-amount"),
+  transferMessage: document.getElementById("transfer-message"),
+  closeTransferBtn: document.getElementById("close-transfer-btn"),
+  cancelTransferBtn: document.getElementById("cancel-transfer-btn"),
 };
 
 const forms = {
@@ -47,10 +53,17 @@ forms.bankTransfer.addEventListener("submit", handleBankTransfer);
 forms.bankAdmin.addEventListener("submit", handleAssignBankAdmin);
 ui.copyCodeBtn.addEventListener("click", handleCopyRoomCode);
 ui.leaveRoomBtn.addEventListener("click", handleLeaveRoom);
+ui.monopolyGameBtn.addEventListener("click", activateMonopolyGame);
+ui.playersList.addEventListener("click", handlePlayerCardClick);
+ui.closeTransferBtn.addEventListener("click", closeTransferModal);
+ui.cancelTransferBtn.addEventListener("click", closeTransferModal);
+ui.transferModal.addEventListener("click", handleBackdropClick);
 
 boot();
 
 async function boot() {
+  activateMonopolyGame();
+
   if (!session) {
     showAuth();
     return;
@@ -62,6 +75,11 @@ async function boot() {
     clearSession();
     showAuth("登录状态已失效，请重新进入房间。", "error");
   }
+}
+
+function activateMonopolyGame() {
+  ui.monopolyGameBtn.classList.add("is-active");
+  ui.gameForms.classList.remove("hidden");
 }
 
 function loadSession() {
@@ -86,8 +104,10 @@ function clearSession() {
 }
 
 function showAuth(message = "", tone = "") {
+  activateMonopolyGame();
   ui.authScreen.classList.remove("hidden");
   ui.dashboardScreen.classList.add("hidden");
+  closeTransferModal();
   setMessage(ui.authMessage, message, tone);
 }
 
@@ -135,6 +155,7 @@ function api(path, options = {}) {
 
 async function handleCreateRoom(event) {
   event.preventDefault();
+  activateMonopolyGame();
   const formData = new FormData(forms.create);
   setMessage(ui.authMessage, "正在创建房间...", "");
 
@@ -142,10 +163,9 @@ async function handleCreateRoom(event) {
     const result = await api("/api/rooms/create", {
       method: "POST",
       body: JSON.stringify({
-        roomName: formData.get("roomName"),
+        roomName: GAME_NAME,
         playerName: formData.get("playerName"),
         startingBalance: formData.get("startingBalance"),
-        bankBalance: formData.get("bankBalance"),
       }),
     });
     saveSession(result.session);
@@ -159,6 +179,7 @@ async function handleCreateRoom(event) {
 
 async function handleJoinRoom(event) {
   event.preventDefault();
+  activateMonopolyGame();
   const formData = new FormData(forms.join);
   setMessage(ui.authMessage, "正在加入房间...", "");
 
@@ -166,7 +187,7 @@ async function handleJoinRoom(event) {
     const result = await api("/api/rooms/join", {
       method: "POST",
       body: JSON.stringify({
-        roomCode: String(formData.get("roomCode") || "").trim().toUpperCase(),
+        roomCode: String(formData.get("roomCode") || "").trim(),
         playerName: formData.get("playerName"),
       }),
     });
@@ -211,25 +232,24 @@ function stopPolling() {
 
 function renderState(state) {
   currentState = state;
-  const roomCode = state.room.code;
   const bankAdmin = state.players.find((player) => player.id === state.bankAdminPlayerId);
-  const myBadges = [];
-  if (state.me.isHost) myBadges.push("房主");
-  if (state.me.isBankAdmin) myBadges.push("银行管理员");
+  const roles = [];
+  if (state.me.isHost) roles.push("房主");
+  if (state.me.isBankAdmin) roles.push("银行管理员");
 
-  ui.roomTitle.textContent = state.room.name;
-  ui.roomMeta.textContent = `房间码 ${roomCode} · 我是 ${state.me.name}${myBadges.length ? ` · ${myBadges.join(" / ")}` : ""}`;
+  ui.roomTitle.textContent = state.room.name || GAME_NAME;
+  ui.roomMeta.textContent = `房间码 ${state.room.code} · 我是 ${state.me.name}${roles.length ? ` · ${roles.join(" / ")}` : ""}`;
   ui.myBalance.textContent = formatMoney(state.me.balance);
   ui.myRank.textContent = `排名 #${state.me.rank}`;
-  ui.bankBalance.textContent = formatMoney(state.room.bankBalance);
-  ui.bankAdminName.textContent = `银行管理员 ${bankAdmin ? bankAdmin.name : "未设置"}`;
   ui.playerCount.textContent = String(state.stats.playerCount);
-  ui.totalAssets.textContent = `玩家总资产 ${formatMoney(state.stats.totalPlayerAssets)}`;
+  ui.bankAdminName.textContent = `银行管理员 ${bankAdmin ? bankAdmin.name : "-"}`;
   ui.syncStatus.textContent = `最近同步 ${formatDateTime(state.serverTime)}`;
 
   renderPlayers(state.players, state.me.id);
-  renderTransferTargets(state.players, state.me.id, state.bankAdminPlayerId);
+  renderSelectors(state.players, state.bankAdminPlayerId);
   renderTransactions(state.transactions);
+  syncTransferModal(state.players);
+
   ui.bankPanel.classList.toggle("hidden", !state.me.isBankAdmin);
   ui.adminPanel.classList.toggle("hidden", !state.me.isHost);
 }
@@ -242,21 +262,31 @@ function renderPlayers(players, meId) {
 
   ui.playersList.innerHTML = players
     .map((player, index) => {
-      const roleBadges = [];
-      if (player.isHost) roleBadges.push('<span class="role-chip host">房主</span>');
-      if (player.isBankAdmin) roleBadges.push('<span class="role-chip">银行</span>');
+      const badges = [];
+      if (player.isHost) badges.push('<span class="role-chip host">房主</span>');
+      if (player.isBankAdmin) badges.push('<span class="role-chip">银行</span>');
+      if (player.id === meId) {
+        badges.push('<span class="role-chip">我</span>');
+      } else {
+        badges.push('<span class="role-chip action">点此转账</span>');
+      }
+
+      const classes = ["player-item"];
+      if (player.id === meId) {
+        classes.push("is-self");
+      } else {
+        classes.push("clickable");
+      }
+
       return `
-        <article class="player-item ${player.id === meId ? "me-highlight" : ""}">
-          <div class="player-top">
-            <div class="player-name-row">
+        <article class="${classes.join(" ")}" ${player.id === meId ? "" : `data-player-id="${player.id}"`}>
+          <div class="player-row">
+            <div class="player-left">
               <span class="rank-chip">#${index + 1}</span>
               <strong>${escapeHtml(player.name)}</strong>
+              ${badges.join("")}
             </div>
             <span class="player-balance">${formatMoney(player.balance)}</span>
-          </div>
-          <div class="badge-row">
-            ${roleBadges.join("")}
-            ${player.id === meId ? '<span class="role-chip">我</span>' : ""}
           </div>
         </article>
       `;
@@ -264,46 +294,28 @@ function renderPlayers(players, meId) {
     .join("");
 }
 
-function renderTransferTargets(players, meId, bankAdminPlayerId) {
-  const currentTransferTarget = ui.transferTarget.value;
-  const currentBankTarget = ui.bankTarget.value;
-  const currentBankAdminTarget = ui.bankAdminSelect.value;
-
-  const options = ['<option value="bank">银行</option>'];
+function renderSelectors(players, bankAdminPlayerId) {
+  const previousBankTarget = ui.bankTarget.value;
+  const previousAdminTarget = ui.bankAdminSelect.value;
   const bankOptions = [];
   const adminOptions = [];
 
   players.forEach((player) => {
-    adminOptions.push(
-      `<option value="${player.id}" ${player.id === bankAdminPlayerId ? "selected" : ""}>${escapeHtml(player.name)}</option>`
-    );
-
-    if (player.id !== meId) {
-      options.push(`<option value="player:${player.id}">${escapeHtml(player.name)}</option>`);
-    }
-
     bankOptions.push(`<option value="${player.id}">${escapeHtml(player.name)}</option>`);
+    adminOptions.push(`<option value="${player.id}">${escapeHtml(player.name)}</option>`);
   });
 
-  ui.transferTarget.innerHTML = options.join("");
   ui.bankTarget.innerHTML = bankOptions.join("");
   ui.bankAdminSelect.innerHTML = adminOptions.join("");
 
-  restoreSelectValue(ui.transferTarget, currentTransferTarget || "bank");
-  restoreSelectValue(ui.bankTarget, currentBankTarget);
-  restoreSelectValue(ui.bankAdminSelect, currentBankAdminTarget || String(bankAdminPlayerId));
+  restoreSelectValue(ui.bankTarget, previousBankTarget);
+  restoreSelectValue(ui.bankAdminSelect, previousAdminTarget || String(bankAdminPlayerId));
 }
 
 function restoreSelectValue(selectElement, preferredValue) {
-  if (!preferredValue) {
-    return;
-  }
-
-  const hasMatchingOption = Array.from(selectElement.options).some(
-    (option) => option.value === preferredValue
-  );
-
-  if (hasMatchingOption) {
+  if (!preferredValue) return;
+  const exists = Array.from(selectElement.options).some((option) => option.value === preferredValue);
+  if (exists) {
     selectElement.value = preferredValue;
   }
 }
@@ -332,13 +344,61 @@ function renderTransactions(transactions) {
     .join("");
 }
 
+function handlePlayerCardClick(event) {
+  const card = event.target.closest("[data-player-id]");
+  if (!card || !currentState) {
+    return;
+  }
+
+  const targetId = Number(card.dataset.playerId);
+  const player = currentState.players.find((item) => item.id === targetId);
+  if (!player) {
+    return;
+  }
+
+  openTransferModal(player);
+}
+
+function openTransferModal(player) {
+  ui.transferTargetName.textContent = player.name;
+  ui.transferPlayerId.value = String(player.id);
+  ui.transferAmount.value = "";
+  setMessage(ui.transferMessage, "");
+  ui.transferModal.classList.remove("hidden");
+  window.setTimeout(() => ui.transferAmount.focus(), 0);
+}
+
+function closeTransferModal() {
+  ui.transferModal.classList.add("hidden");
+  forms.transfer.reset();
+  setMessage(ui.transferMessage, "");
+}
+
+function handleBackdropClick(event) {
+  if (event.target === ui.transferModal) {
+    closeTransferModal();
+  }
+}
+
+function syncTransferModal(players) {
+  if (ui.transferModal.classList.contains("hidden")) {
+    return;
+  }
+
+  const targetId = Number(ui.transferPlayerId.value);
+  const player = players.find((item) => item.id === targetId);
+  if (!player) {
+    closeTransferModal();
+    return;
+  }
+
+  ui.transferTargetName.textContent = player.name;
+}
+
 async function handlePlayerTransfer(event) {
   event.preventDefault();
-  if (!session || !currentState) return;
-
+  if (!session) return;
   const formData = new FormData(forms.transfer);
-  const targetValue = String(formData.get("target"));
-  const [targetKind, targetPlayerId] = targetValue.includes(":") ? targetValue.split(":") : [targetValue, ""];
   setMessage(ui.transferMessage, "提交中...", "");
 
   try {
@@ -348,15 +408,15 @@ async function handlePlayerTransfer(event) {
         playerId: session.playerId,
         token: session.token,
         fromKind: "player",
-        toKind: targetKind === "bank" ? "bank" : "player",
-        toPlayerId: targetPlayerId,
+        toKind: "player",
+        toPlayerId: formData.get("targetPlayerId"),
         amount: formData.get("amount"),
-        note: formData.get("note"),
+        note: "",
       }),
     });
-    forms.transfer.reset();
     renderState(result.state);
     setMessage(ui.transferMessage, "转账已完成。", "success");
+    window.setTimeout(() => closeTransferModal(), 500);
   } catch (error) {
     setMessage(ui.transferMessage, error.message, "error");
   }
@@ -378,12 +438,12 @@ async function handleBankTransfer(event) {
         toKind: "player",
         toPlayerId: formData.get("target"),
         amount: formData.get("amount"),
-        note: formData.get("note"),
+        note: "",
       }),
     });
     forms.bankTransfer.reset();
     renderState(result.state);
-    setMessage(ui.bankMessage, "银行付款已完成。", "success");
+    setMessage(ui.bankMessage, "银行发钱已完成。", "success");
   } catch (error) {
     setMessage(ui.bankMessage, error.message, "error");
   }
@@ -423,7 +483,8 @@ async function handleCopyRoomCode() {
 
 function handleLeaveRoom() {
   clearSession();
-  forms.transfer.reset();
+  forms.create.reset();
+  forms.join.reset();
   forms.bankTransfer.reset();
   forms.bankAdmin.reset();
   showAuth("已退出当前房间。");
