@@ -676,6 +676,29 @@ class GameStore:
         finally:
             conn.close()
 
+    def dissolve_room(self, *, room_code: str, player_id: int, token: str) -> dict[str, object]:
+        with WRITE_LOCK:
+            conn = self.connect()
+            try:
+                conn.begin()
+                room, me = self._load_authenticated_room(
+                    conn,
+                    room_code=room_code,
+                    player_id=player_id,
+                    token=token,
+                )
+                if me["id"] != room["host_player_id"]:
+                    raise PermissionError("只有房主可以解散房间。")
+
+                conn.execute("DELETE FROM rooms WHERE id = ?", (room["id"],))
+                conn.commit()
+                return {"dissolved": True}
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+
     def leave_room(self, *, room_code: str, player_id: int, token: str) -> dict[str, object]:
         with WRITE_LOCK:
             conn = self.connect()
@@ -895,6 +918,9 @@ class AppHandler(BaseHTTPRequestHandler):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -1032,6 +1058,19 @@ class AppHandler(BaseHTTPRequestHandler):
                 self._send_json(HTTPStatus.OK, response)
                 return
 
+            if len(parts) == 4 and parts[0] == "api" and parts[1] == "rooms" and parts[3] == "dissolve":
+                player_id = parse_amount(payload.get("playerId"), field_name="玩家 ID", minimum=1)
+                token = str(payload.get("token") or "")
+                if not token:
+                    raise ValueError("缺少登录令牌。")
+                response = self.store.dissolve_room(
+                    room_code=parts[2],
+                    player_id=player_id,
+                    token=token,
+                )
+                self._send_json(HTTPStatus.OK, response)
+                return
+
             self._send_error(HTTPStatus.NOT_FOUND, "接口不存在。")
         except ValueError as exc:
             self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
@@ -1060,6 +1099,9 @@ class AppHandler(BaseHTTPRequestHandler):
         body = file_path.read_bytes()
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", f"{content_type or 'application/octet-stream'}; charset=utf-8")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

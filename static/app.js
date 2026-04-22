@@ -33,6 +33,7 @@ const ui = {
   recentRoomsList: document.getElementById("recent-rooms-list"),
   pauseRoomBtn: document.getElementById("pause-room-btn"),
   exitRoomBtn: document.getElementById("exit-room-btn"),
+  dissolveRoomBtn: document.getElementById("dissolve-room-btn"),
 };
 
 const forms = {
@@ -55,18 +56,24 @@ forms.bankTransfer.addEventListener("submit", handleBankTransfer);
 forms.bankAdmin.addEventListener("submit", handleAssignBankAdmin);
 ui.pauseRoomBtn.addEventListener("click", handlePauseRoom);
 ui.exitRoomBtn.addEventListener("click", handleExitRoom);
+ui.dissolveRoomBtn.addEventListener("click", handleDissolveRoom);
 ui.monopolyGameBtn.addEventListener("click", activateMonopolyGame);
 ui.playersList.addEventListener("click", handlePlayerCardClick);
 ui.closeTransferBtn.addEventListener("click", closeTransferModal);
 ui.cancelTransferBtn.addEventListener("click", closeTransferModal);
 ui.transferModal.addEventListener("click", handleBackdropClick);
 ui.recentRoomsList.addEventListener("click", handleSavedRoomClick);
+document.addEventListener("visibilitychange", handleVisibilityRefresh);
+window.addEventListener("focus", handleVisibilityRefresh);
+window.addEventListener("pageshow", handleVisibilityRefresh);
+window.addEventListener("popstate", handlePopState);
 
 boot();
 
 async function boot() {
   activateMonopolyGame();
   renderSavedRooms();
+  ensureAuthHistoryState();
 
   if (!session) {
     showAuth();
@@ -76,18 +83,30 @@ async function boot() {
   try {
     await fetchState({ showSyncPulse: false });
   } catch (error) {
-    const expiredSession = session;
-    clearSession();
-    if (shouldForgetSavedRoom(error)) {
-      forgetSavedRoom(expiredSession);
+    if (handleFatalRoomError(error)) {
+      return;
     }
-    showAuth("登录状态已失效，请重新进入房间。", "error");
+    exitToAuth("登录状态已失效，请重新进入房间。", "error");
   }
 }
 
 function activateMonopolyGame() {
   ui.monopolyGameBtn.classList.add("is-active");
   ui.gameForms.classList.remove("hidden");
+}
+
+function ensureAuthHistoryState() {
+  if (history.state?.screen === "auth") {
+    return;
+  }
+  history.replaceState({ screen: "auth" }, "", window.location.pathname);
+}
+
+function ensureRoomHistoryState() {
+  if (history.state?.screen === "room") {
+    return;
+  }
+  history.pushState({ screen: "room" }, "", window.location.pathname);
 }
 
 function loadSession() {
@@ -200,11 +219,31 @@ function showAuth(message = "", tone = "") {
   closeTransferModal();
   renderSavedRooms();
   setMessage(ui.authMessage, message, tone);
+  ensureAuthHistoryState();
 }
 
 function showDashboard() {
   ui.authScreen.classList.add("hidden");
   ui.dashboardScreen.classList.remove("hidden");
+  ensureRoomHistoryState();
+}
+
+function isFatalRoomError(error) {
+  return shouldForgetSavedRoom(error) || String(error?.message || "").includes("房间已被解散");
+}
+
+function exitToAuth(message, tone = "", { forget = false } = {}) {
+  clearSession({ forget });
+  resetRoomForms();
+  showAuth(message, tone);
+}
+
+function handleFatalRoomError(error) {
+  if (!isFatalRoomError(error)) {
+    return false;
+  }
+  exitToAuth(error.message, "error", { forget: true });
+  return true;
 }
 
 function setMessage(element, message, tone = "") {
@@ -230,6 +269,7 @@ function formatDateTime(isoText) {
 
 function api(path, options = {}) {
   return fetch(path, {
+    cache: "no-store",
     headers: {
       "Content-Type": "application/json",
       ...(options.headers || {}),
@@ -311,11 +351,10 @@ async function handleSavedRoomClick(event) {
     showDashboard();
     startPolling();
   } catch (error) {
-    clearSession();
-    if (shouldForgetSavedRoom(error)) {
-      forgetSavedRoom(room);
+    if (handleFatalRoomError(error)) {
+      return;
     }
-    showAuth(error.message, "error");
+    exitToAuth(error.message, "error");
   }
 }
 
@@ -324,6 +363,7 @@ async function fetchState({ showSyncPulse = true } = {}) {
   const query = new URLSearchParams({
     playerId: String(session.playerId),
     token: session.token,
+    _ts: String(Date.now()),
   });
   const result = await api(`/api/rooms/${session.roomCode}/state?${query.toString()}`);
   renderState(result.state);
@@ -337,6 +377,9 @@ function startPolling() {
   stopPolling();
   pollTimer = window.setInterval(() => {
     fetchState().catch((error) => {
+      if (handleFatalRoomError(error)) {
+        return;
+      }
       ui.syncStatus.textContent = error.message;
     });
   }, POLL_INTERVAL_MS);
@@ -347,6 +390,25 @@ function stopPolling() {
     window.clearInterval(pollTimer);
     pollTimer = null;
   }
+}
+
+function handleVisibilityRefresh() {
+  if (!session) return;
+  if (document.visibilityState && document.visibilityState !== "visible") return;
+
+  fetchState({ showSyncPulse: false }).catch((error) => {
+    if (handleFatalRoomError(error)) {
+      return;
+    }
+    ui.syncStatus.textContent = error.message;
+  });
+}
+
+function handlePopState() {
+  if (!session || ui.dashboardScreen.classList.contains("hidden")) {
+    return;
+  }
+  pauseRoomLocally("已暂离当前房间。");
 }
 
 function resetRoomForms() {
@@ -590,7 +652,7 @@ async function handleAssignBankAdmin(event) {
   }
 }
 
-function handlePauseRoom() {
+function pauseRoomLocally(message) {
   if (session && currentState) {
     rememberSavedRoom({
       ...session,
@@ -600,9 +662,11 @@ function handlePauseRoom() {
     });
   }
 
-  clearSession();
-  resetRoomForms();
-  showAuth("已暂离当前房间。");
+  exitToAuth(message, "success");
+}
+
+function handlePauseRoom() {
+  pauseRoomLocally("已暂离当前房间。");
 }
 
 async function handleExitRoom() {
@@ -619,11 +683,37 @@ async function handleExitRoom() {
         token: session.token,
       }),
     });
-    clearSession({ forget: true });
-    resetRoomForms();
-    showAuth("已退出房间。", "success");
+    exitToAuth("已退出房间。", "success", { forget: true });
   } catch (error) {
+    if (handleFatalRoomError(error)) {
+      return;
+    }
     ui.syncStatus.textContent = error.message;
+  }
+}
+
+async function handleDissolveRoom() {
+  if (!session) return;
+  if (!window.confirm("解散后会清空整个房间，所有玩家都会被移出。确定解散吗？")) {
+    return;
+  }
+
+  setMessage(ui.adminMessage, "解散中...", "");
+
+  try {
+    await api(`/api/rooms/${session.roomCode}/dissolve`, {
+      method: "POST",
+      body: JSON.stringify({
+        playerId: session.playerId,
+        token: session.token,
+      }),
+    });
+    exitToAuth("房间已解散。", "success", { forget: true });
+  } catch (error) {
+    if (handleFatalRoomError(error)) {
+      return;
+    }
+    setMessage(ui.adminMessage, error.message, "error");
   }
 }
 
